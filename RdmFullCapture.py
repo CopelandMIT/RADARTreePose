@@ -8,6 +8,8 @@ from torchvision.transforms.functional import resize
 from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence
 from torch import optim
 from scipy.ndimage import uniform_filter1d
+from scipy.stats import mode
+from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
 
 class RdmFullCapture(Dataset):
@@ -85,7 +87,7 @@ class RdmFullCapture(Dataset):
         
         return labels, goup_ranges, down_ranges
     
-    def create_windows_for_capture(self, index, window_size=100, overlap=0):
+    def create_windows_for_capture(self, index, overlap):
         """
         Create windows for a specific capture given by index.
 
@@ -97,6 +99,8 @@ class RdmFullCapture(Dataset):
         Returns:
         - A tuple containing windows, labels for each window, lengths of each window, and metadata.
         """
+        self.overlap = overlap
+        self.current_index = index
                 
         if index >= len(self.data):
                 raise ValueError("Index out of range.")
@@ -110,13 +114,13 @@ class RdmFullCapture(Dataset):
         windows_labels_data = []  # Collect labels data
         windows_lengths_tensor = []
         
-        num_windows = 1 + (actuator_end_frame - actuator_start_frame - window_size) // (window_size - overlap)
+        num_windows = 1 + (actuator_end_frame - actuator_start_frame - self.window_size) // (self.window_size - overlap)
 
         print(f"Creating windows {num_windows} windows for Radar Capture: {capture_metadata['RADAR_capture']}, channel: {capture_metadata['channel_number']}")
 
         for w in range(num_windows):
-            start = w * (window_size - overlap) + actuator_start_frame  # Adjust for correct overlap
-            end = start + window_size
+            start = w * (self.window_size - overlap) + actuator_start_frame  # Adjust for correct sliding window
+            end = start + self.window_size
             window_range_dict = {'window_start_frame': start, 'window_end_frame': min(end, actuator_end_frame)}
 
             if end > actuator_end_frame:
@@ -179,128 +183,242 @@ class RdmFullCapture(Dataset):
 
             return predictions
         
-    def aggregate_predictions_sliding_windows(self, predictions, windows_ranges):
-        # Assuming predictions is (1100, 3), for 11 windows each covering 100 frames, with 50 frames overlap
+    def aggregate_predictions_sliding_windows(self, predictions, windows_ranges, smoothing_window_size=5):
         full_length = max(w_range['window_end_frame'] for w_range in windows_ranges) + 1
         num_classes = predictions.shape[1]
         
-        # Initialize an array for aggregated predictions across the full sequence
-        aggregated_predictions = np.full((full_length, num_classes), -np.inf)
+        # Initialize an array for the aggregated maximum likelihoods
+        aggregated_predictions = np.zeros((full_length, num_classes))
+        coverage_count = np.zeros(full_length)  # Track how many times each frame is covered by windows
         
-        window_length = 100  # Each window covers 100 frames
-        slide_step = 0  # Windows slide by 50 frames
-
-        # Process predictions for each window
-        for window_idx, window_range in enumerate(windows_ranges):
+        current_pred_idx = 0  # Track the current index within the flat predictions array
+        
+        for window_range in windows_ranges:
             start_frame = window_range['window_start_frame']
-            end_frame = window_range['window_end_frame']
-            window_pred_start_idx = window_idx * window_length - (window_idx * slide_step if window_idx > 0 else 0)
-
-            for frame_offset in range(window_length):
-                frame_idx = start_frame + frame_offset
-                if frame_idx >= full_length:
-                    break  # Beyond the sequence range
-                if frame_idx >= end_frame:
-                    continue  # Skip if beyond the window's end frame
+            end_frame = min(window_range['window_end_frame'], full_length)
+            
+            for frame_idx in range(start_frame, end_frame):
+                # Extract the prediction for the current frame
+                frame_prediction = predictions[current_pred_idx]
+                current_pred_idx += 1  # Move to the next prediction
                 
-                prediction_idx = window_pred_start_idx + frame_offset
-                frame_prediction = predictions[prediction_idx]
-                
-                # Update aggregated predictions with maximum likelihood
+                # Aggregate by taking the maximum likelihood across overlapping predictions
                 aggregated_predictions[frame_idx] = np.maximum(aggregated_predictions[frame_idx], frame_prediction)
+                coverage_count[frame_idx] += 1
+        
+        # Handle frames not covered by any window (if any) to avoid division by zero
+        coverage_count[coverage_count == 0] = 1
+        
+        # Normalize aggregated predictions by the number of windows covering each frame
+        aggregated_predictions /= coverage_count[:, None]
+
+        # Let's say 'predictions' is your numpy array with shape (806, 3)
+        smoothed_predictions = self.smooth_probabilities(aggregated_predictions)
         
         # Determine class predictions by selecting the class with the highest likelihood for each frame
-        class_predictions = np.argmax(aggregated_predictions, axis=1)
+        class_predictions = np.argmax(smoothed_predictions, axis=1)
+        
+        class_predictions[-1] = 2
         
         return class_predictions
-    
-    # def aggregate_predictions_max_confidence(self, predictions, windows_ranges):
-    #     # Determine the full length of the sequence based on the maximum end frame among windows
-    #     full_length = max(window_range['window_end_frame'] for window_range in windows_ranges) + 1  # +1 to account for zero-indexing
-        
-    #     # Initialize arrays to hold summed probabilities and the sum of likelihoods for normalization
-    #     num_classes = predictions.shape[2]
-    #     sum_probabilities = np.zeros((full_length, num_classes), dtype=np.float64)
-    #     sum_likelihoods = np.zeros(full_length, dtype=np.float64)
-        
-    #     for prediction, window_range in zip(predictions, windows_ranges):
-    #         start_frame = window_range['window_start_frame']
-    #         end_frame = window_range['window_end_frame']
-            
-    #         for frame_idx in range(start_frame, end_frame):
-    #             # Calculate relative index within the prediction array
-    #             relative_idx = frame_idx - start_frame
-                
-    #             # Sum the probabilities and likelihoods
-    #             likelihoods = prediction[relative_idx]
-    #             sum_probabilities[frame_idx] += likelihoods
-    #             sum_likelihoods[frame_idx] += np.sum(likelihoods)
-        
-    #     print(sum_probabilities)
-    #     print(sum_probabilities.shape)
-    #     # Normalize summed probabilities by the sum of likelihoods to get the average
-    #     avg_probabilities = np.divide(sum_probabilities, sum_likelihoods[:, None], out=np.zeros_like(sum_probabilities), where=sum_likelihoods[:, None] != 0)
-        
-    #     # Determine the class with the highest average probability
-    #     class_predictions = np.argmax(avg_probabilities, axis=1)
-        
-    #     return class_predictions
 
-    # def aggregate_predictions_max_likelihood(self, predictions, windows_ranges):
-    #     # Determine the full length of the sequence based on the maximum end frame among windows
-    #     full_length = max(range_['window_end_frame'] for range_ in windows_ranges) + 1  # +1 to account for zero-indexing
-    #     num_classes = predictions.shape[2]
+    def smooth_probabilities(self, probabilities, window_size=7):
+        # Check if probabilities array is 2D and has the correct shape
+        if probabilities.ndim != 2 or probabilities.shape[1] != 3:
+            raise ValueError("The probabilities array should be 2D with shape (n, 3).")
         
-    #     # Initialize an array to hold the class index with the maximum likelihood for each frame
-    #     class_predictions = np.full(full_length, 2) 
-        
-    #     # Initialize an array to track the maximum likelihood for comparison
-    #     max_likelihoods = np.full((full_length, num_classes), -np.inf)  # Use -inf to ensure any prediction is greater
-        
-    #     for prediction, window_range in zip(predictions, windows_ranges):
-    #         print('Prediction shape is')
-    #         print(predictions[0].shape)
+        # Apply a uniform filter to smooth each class's probability
+        smoothed = np.apply_along_axis(lambda m: uniform_filter1d(m, size=window_size), axis=0, arr=probabilities)
+        return smoothed
 
-    #         start_frame = window_range['window_start_frame']
-    #         end_frame = window_range['window_end_frame']
-            
-    #         for frame_idx in range(start_frame, end_frame):
-    #             # Calculate relative index within the prediction array
-    #             relative_idx = frame_idx - start_frame
-                
-    #             # Update max likelihood and class predictions if current prediction has higher likelihood
-    #             for class_idx in range(num_classes):
-    #                 if prediction[relative_idx, class_idx] > max_likelihoods[frame_idx, class_idx]:
-    #                     max_likelihoods[frame_idx, class_idx] = prediction[relative_idx, class_idx]
-    #                     class_predictions[frame_idx] = class_idx
-        
-    #     return class_predictions
-
-    def calculate_full_length(self, metadata):
-        # This method should calculate the full length for aggregated predictions based on the metadata.
-        # It could be as simple as the difference between the end and start frame of the capture, plus some padding if needed.
-        return metadata['frame_range'][1] - metadata['frame_range'][0] + 1
-
-
-    def plot_predictions(self, index, smoothed_predictions, capture_name, metadata):
+    def plot_predictions_with_time(self, index, smoothed_predictions, capture_name):
         """
-        Plot smoothed predictions against the true labels.
+        Plot smoothed predictions against the true labels and show time on the secondary x-axis.
         """
-        # Assuming metadata and labels for the index are properly set
-        metadata = self.all_metadata[index]
         labels = self.labels[index]
+        metadata = self.all_metadata[index]
+        correction_offset = 0.3
+
+        fig, ax1 = plt.subplots(figsize=(20, 5))
+
+        ax1.plot(labels, label='True Labels', color='blue')
+        ax1.plot(smoothed_predictions, label='Predicted', color='red', linestyle='--')
+        ax1.set_xlim([metadata['frame_range'][0], metadata['frame_range'][1]])
+        ax1.set_xlabel('Frame')
+        ax1.set_ylabel('Label')
+        ax1.legend(loc='upper left')
+
+        frames = np.arange(metadata['frame_range'][0], metadata['frame_range'][1] + 1)
+        times = (metadata['MOCAP_time_range'][0] + frames * metadata['seconds_per_frame']) - metadata['frame_range'][0] + correction_offset
+
+        # Dynamically determine tick frequency to avoid zero step size
+        tick_frequency = max(1, round(1 / metadata['seconds_per_frame']))
+        tick_indices = np.arange(len(frames))[::tick_frequency]
+        tick_frames = frames[tick_indices]
+        tick_times = times[tick_indices]
+
+        ax2 = ax1.twiny()
+        ax2.set_xlim(ax1.get_xlim())
+        ax2.set_xticks(tick_frames)
+        ax2.set_xticklabels(["{:.2f}s".format(time) for time in tick_times], rotation=45)
+        ax2.set_xlabel('Time (s)')
+
+        plt.title(f'Predictions vs. True Labels for {capture_name}')
+        plt.show()
+        
+    def find_consecutive_segments(self, predictions=[], min_length=5):
+        if not isinstance(predictions,  np.ndarray):
+            predictions = self.labels[self.current_index]
+        segments = []
+        current_segment = []
+        last_label = 2
+
+        for i, label in enumerate(predictions):
+            if label == last_label and label in [0, 1]:  # GOUP or DOWN
+                current_segment.append(i)
+            else:
+                if len(current_segment) >= min_length:
+                    segments.append((current_segment[0], last_label))
+                current_segment = [i] if label in [0, 1] else []
+            last_label = label
+
+        # Check the last segment
+        if len(current_segment) >= min_length:
+            segments.append((current_segment[0], last_label))
+
+        return segments
+    
+    def generate_full_confusion_matrix(self, segments, true_segments, full_predictions, window=12):
+        true_labels = self.labels[self.current_index]
+        y_pred = []
+        y_true = []
+        for start, label in segments:
+            # Look for the corresponding start in true_labels within a 10-frame window
+            for i in range(max(0, start - window), min(len(true_labels), start + window)):
+                if true_labels[i] == label:
+                    y_pred.append(label)
+                    y_true.append(label)
+                    break
+            else:
+                y_pred.append(label)
+                y_true.append(2)  # Neither
+                
+        # Second pass: look for false negatives using a window approach
+        window = 10
+        for start, label in true_segments:
+            # Look for the corresponding start in true_labels within a 10-frame window
+            for i in range(max(0, start - window), min(len(true_labels), start + window)):
+                if full_predictions[i] == label:
+                    # Not a false negative
+                    break
+            else:
+                y_pred.append(full_predictions[i])
+                y_true.append(label)  # Neither
+            
+        return confusion_matrix(y_true, y_pred, labels=[0, 1, 2])
+
+    def generate_confusion_matrix(self, segments, window=12):
+        true_labels = self.labels[self.current_index]
+        y_pred = []
+        y_true = []
+        for start, label in segments:
+            # Look for the corresponding start in true_labels within a 10-frame window
+            for i in range(max(0, start - window), min(len(true_labels), start + window)):
+                if true_labels[i] == label:
+                    y_pred.append(label)
+                    y_true.append(label)
+                    break
+            else:
+                y_pred.append(label)
+                y_true.append(2)  # Neither
+
+        return confusion_matrix(y_true, y_pred, labels=[0, 1, 2])
+    
+    
+    def generate_confusion_matrix_with_window_for_false_negatives(self, segments, window=12):
+        true_labels = self.labels[self.current_index]
+        y_pred = []
+        y_true = []
+        used_true_labels = []  # Keep track of which true labels have been matched
+
+        # First pass: look for true positives and false positives
+        for start, label in segments:
+            found_match = False
+            for i in range(max(0, start - window), min(len(true_labels), start + window)):
+                if true_labels[i] == label and i not in used_true_labels:
+                    y_pred.append(label)
+                    y_true.append(label)
+                    used_true_labels.append(i)
+                    found_match = True
+                    break
+            if not found_match:
+                y_pred.append(label)
+                y_true.append(2)  # Neither
+
+        print(f"Used true labels are: {used_true_labels}")
+        
+        # Second pass: look for false negatives using a window approach
+        for i, label in enumerate(true_labels):
+            # Only consider labels that are GOUP or DOWN and haven't been used
+            if label in [0, 1] and i not in used_true_labels:
+                # Check if there's a sequence of similar labels within a window
+                sequence_found = False
+                for j in range(max(0, i - window), min(len(true_labels), i + window)):
+                    # If a sequence is detected
+                    if true_labels[j] == label:
+                        sequence_found = True
+                        break
+
+                if sequence_found:
+                    # If a sequence of the same event type is found within the window, consider it a false negative
+                    y_pred.append(2)  # Neither (predicted)
+                    y_true.append(label)  # Actual event type
+                else:
+                    # If no sequence is found, it's not considered a false negative
+                    used_true_labels.append(i)  # Mark as used to avoid re-evaluation
+
+        return confusion_matrix(y_true, y_pred, labels=[0, 1, 2])
+
 
         
-        plt.figure(figsize=(20, 5))
-        plt.plot(labels, label='True Labels', color='blue')
-        plt.plot(smoothed_predictions, label='Predicted', color='red', linestyle='--')
-        plt.title(f'Predictions vs. True Labels for {capture_name}')
-        plt.xlim([metadata['frame_range'][0] + 20, metadata['frame_range'][1] + 20])
-        plt.xlabel('Frame')
-        plt.ylabel('Probability')
-        plt.legend()
-        plt.show()
+    # def generate_confusion_matrix(self, index, frame_predictions):
+    #     metadata = self.all_metadata[index]
+    #     segment_boundaries = metadata['GOUP_ranges'] + metadata['DOWN_ranges']
+    #     print(f'Segment boundaries: {segment_boundaries}')
+    #     # The rest of the frames are considered 'NEITHER', type 2
+    #     segment_true_labels = self.labels[index]
+        
+    #     segment_predictions = []
+    #     segment_true_labels_list = []
 
+    #     for segment_range in segment_boundaries:
+    #         start_frame, end_frame = segment_range
+    #         # Adjust for the actual index in the frame_predictions array
+    #         adjusted_start = start_frame
+    #         adjusted_end = end_frame 
+            
+    #         print(segment_range)
+
+    #         # Get the frame-level predictions for this segment
+    #         segment_frame_predictions = frame_predictions[adjusted_start:adjusted_end]
+    #         print(segment_frame_predictions)
+    #         # Aggregate the frame predictions into a segment prediction using the mode
+    #         segment_prediction = mode(segment_frame_predictions).mode[0]
+    #         segment_predictions.append(segment_prediction)
+
+    #         # Get the true label for the segment from the classified frames
+    #         segment_true_label = mode(segment_true_labels[start_frame:end_frame]).mode[0]
+    #         segment_true_labels_list.append(segment_true_label)
+
+    #     # Convert lists to arrays
+    #     segment_predictions = np.array(segment_predictions)
+    #     segment_true_labels = np.array(segment_true_labels_list)
+
+    #     # Now generate the confusion matrix
+    #     conf_matrix = confusion_matrix(segment_true_labels, segment_predictions)
+
+    #     return conf_matrix
+    
     def __len__(self):
         return len(self.data)
 
@@ -321,48 +439,6 @@ class RdmFullCapture(Dataset):
 
         return data, label, length, metadata
     
-    def predict_full_capture(self):
-        """
-        Evaluates the full-length capture by predicting each window,
-        collating the predictions, and then smoothing.
-        """
-        self.model.eval()
-        loader = DataLoader(self, batch_size=1, shuffle=False)
-        predictions = []
-
-        with torch.no_grad():
-            for window in loader:
-                output = self.model(window)
-                predictions.append(torch.softmax(output, dim=1).numpy())
-
-        # Collate predictions by averaging overlapping areas
-        collated_predictions = self._collate_predictions(predictions)
-
-        # Smooth the collated predictions
-        smoothed_predictions = uniform_filter1d(collated_predictions, size=5, axis=0)
-
-        return smoothed_predictions
-
-    def _collate_predictions(self, predictions):
-        """
-        Averages predictions from overlapping windows.
-        """
-        full_length = len(self.capture_data)
-        collated = np.zeros((full_length, predictions[0].shape[1]))
-
-        count = np.zeros(full_length)
-        start = 0
-        for pred in predictions:
-            end = start + self.window_size
-            collated[start:end] += pred.squeeze()
-            count[start:end] += 1
-            start += self.window_size - self.overlap
-
-        # Avoid division by zero
-        count[count == 0] = 1
-        collated /= count[:, None]
-        
-        return collated
 
     @staticmethod
     def collate_fn(batch):
@@ -419,53 +495,3 @@ class RdmFullCapture(Dataset):
 
         plt.show()
         
-    # def create_windows(self, window_size=100):
-    #     all_windows = []
-    #     all_labels = []
-    #     all_lengths = []
-
-    #     # Iterate through each full capture data in the dataset
-    #     for i in range(len(self)):
-    #         capture_data, capture_labels, _, capture_metadata = self[i]
-    #         actuator_start_frame = capture_metadata['frame_range'][0]
-    #         actuator_end_frame = capture_metadata['frame_range'][1]
-            
-    #         # Calculate the number of windows
-    #         num_windows = ((actuator_end_frame - actuator_start_frame) - window_size) // (window_size // 2) + 1
-
-    #         # Create windows
-    #         for w in range(num_windows):
-    #             start = w * (window_size // 2) + actuator_start_frame
-    #             end = start + window_size
-    #             capture_metadata['window_start_frame'] = start
-    #             capture_metadata['window_end_frame'] = end
-
-    #             if end > actuator_end_frame:
-    #                 capture_metadata['window_end_frame'] = actuator_end_frame
-    #                 # Pad the data and labels for windows that exceed the actuator_end_frame
-    #                 padding_length = end - actuator_end_frame
-    #                 window_data = torch.cat((capture_data[start:actuator_end_frame], torch.zeros(padding_length, *capture_data.shape[1:])))
-    #                 window_labels = np.concatenate((capture_labels[start:actuator_end_frame], np.full((padding_length,), -1)))
-    #             else:
-    #                 window_data = capture_data[start:end]
-    #                 window_labels = capture_labels[start:end]
-
-    #             # Convert window_labels to a tensor and add batch dimension
-    #             window_labels_tensor = torch.tensor(window_labels).unsqueeze(0)
-    #             all_windows.append(window_data.unsqueeze(0))
-    #             all_labels.append(window_labels_tensor)
-    #             all_lengths.append(window_data.shape[0])
-    #             self.all_metadata.append(capture_metadata)
-
-    #     # Combine all windows into a single batch tensor
-    #     windows_tensor = torch.cat(all_windows, dim=0)
-    #     labels_tensor = torch.cat(all_labels, dim=0)
-    #     lengths_tensor = torch.tensor(all_lengths)
-
-    #     return windows_tensor, labels_tensor, lengths_tensor, self.all_metadata
-    
-
-# Example usage:
-# Assuming 'model' is your trained model and 'capture_data' is a numpy array of your full-length capture
-# full_capture = RdmFullCapture(model, capture_data)
-# smoothed_predictions = full_capture.predict_full_capture()

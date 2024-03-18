@@ -10,11 +10,12 @@ from torch import optim
 
 
 class RdmDataset(Dataset):
-    def __init__(self, root_dir, event_csv, included_folders, window_size=100):
+    def __init__(self, root_dir, event_csv, included_folders, window_size=100, overlap = 90):
         self.data = []
         self.labels = []  # This will store labels for each window
         self.metadata = []  # Store metadata for each window
         self.window_size = window_size
+        self.overlap = overlap
         
         # Load event labels and actuator frames
         self.event_labels_df = pd.read_csv(event_csv)
@@ -65,7 +66,7 @@ class RdmDataset(Dataset):
         num_frames = actuator_end_frame - actuator_start_frame + 1
         labels, goup_ranges, down_ranges = self.label_frames(radar_capture)
         
-        for start in range(0, num_frames - self.window_size + 1, self.window_size // 2):
+        for start in range(0, num_frames - self.window_size + 1, (self.window_size - self.overlap)):
             actual_start = start + actuator_start_frame
             actual_end = actual_start + self.window_size
             

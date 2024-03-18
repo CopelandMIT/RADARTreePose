@@ -5,17 +5,24 @@ import re
 import matplotlib.pyplot as plt
 import imageio
 import os
-
+from scipy.spatial import ConvexHull
 
 class FPDataCapture:
-    def __init__(self, base_file_path):
+    def __init__(self, base_file_path, is_foot_always_up = False):
         self.headers_f_1 = {}
         self.headers_f_2 = {}
         self.sample_frequency = 1200
         self.base_file_path = base_file_path
         self.radar_to_mocap_conversion_table_path = '/Users/danielcopeland/Library/Mobile Documents/com~apple~CloudDocs/MIT Masters/DRL/LABx/RADARTreePose/data/csvs/radar_seconds_per_frame_t0.csv' 
+        self.event_data_frame_path = "/Users/danielcopeland/Library/Mobile Documents/com~apple~CloudDocs/MIT Masters/DRL/LABx/RADARTreePose/data/csvs/MOCAP_FP_RADAR_FU_Stable_Break_FD_TIME_FRAMES_v3.csv"
         self.data_f_1 = self.import_data(self.base_file_path.replace(".tsv", "_f_1.tsv"), self.headers_f_1)
         self.data_f_2 = self.import_data(self.base_file_path.replace(".tsv", "_f_2.tsv"), self.headers_f_2)
+        if is_foot_always_up:
+            if "MNTRL" in self.base_file_path:
+                data = self.data_f_2
+            elif "MNTRR" in self.base_file_path:
+                data = self.data_f_1
+            self.data=data        
         self.foot_lift_times = None
         self.foot_down_times = None
         self.foot_lift_frames_after_actuator = None
@@ -470,6 +477,64 @@ class FPDataCapture:
             os.remove(filename)
 
         print(f'GIF saved to {gif_path}')
+        
+        
+    def isolate_rows_by_time(self, start_time, end_time):
+        """
+        Isolates rows in the DataFrame between the specified start and end times.
+
+        Parameters:
+        - df: DataFrame containing the data.
+        - start_time: The start time as a float.
+        - end_time: The end time as a float.
+
+        Returns:
+        - A DataFrame containing only the rows within the specified time range.
+        """
+        # Filter the rows where 'time' is between start_time and end_time
+        filtered_df = self.data[(self.data['time'] >= start_time) & (self.data['time'] <= end_time)]
+        return filtered_df
+    
+        
+    def enclosing_circle_radius(self, df):
+        cop_points = df[['COP_X', 'COP_Y']].values
+        hull = ConvexHull(cop_points)
+        # scipy.spatial.ConvexHull does not directly provide a min_circle method.
+        # Assuming this was intended to calculate the radius of the enclosing circle
+        # using the convex hull points. However, this requires a different approach or library,
+        # such as using 'miniball' to find the minimum enclosing circle of points.
+        # This placeholder shows intent but would need to be replaced with actual implementation.
+        center = hull.points.mean(axis=0)  # Placeholder for actual center calculation
+        distances = np.sqrt(((hull.points - center) ** 2).sum(axis=1))
+        radius = distances.max()
+        return radius
+
+    def convex_hull_area(self, df):
+        cop_points = df[['COP_X', 'COP_Y']].values
+        hull = ConvexHull(cop_points)
+        return hull.volume  # For 2D, volume returns the area
+
+    def average_velocity_squared(self, df):
+        cop_points = df[['COP_X', 'COP_Y']].values
+        velocities = np.diff(cop_points, axis=0)
+        velocities_squared = np.sum(velocities ** 2, axis=1)
+        avg_vel_squared = np.mean(velocities_squared)
+        return avg_vel_squared
+    
+    def average_speed(self, df):
+        cop_points = df[['COP_X', 'COP_Y']].values
+        velocities = np.diff(cop_points, axis=0)
+        velocities_squared = np.sum(velocities ** 2, axis=1)
+        speeds = np.sqrt(velocities_squared)
+        avg_speed = np.mean(speeds)
+        return avg_speed
+
+    def maximum_distance_from_centroid(self, df):
+        cop_points = df[['COP_X', 'COP_Y']].values
+        centroid = np.mean(cop_points, axis=0)
+        distances = np.sqrt(np.sum((cop_points - centroid) ** 2, axis=1))
+        max_distance = np.max(distances)
+        return max_distance
 # Usage example:
 # file_path_f_1 = 'path_to_f_1.tsv' # Replace with actual file path
 # file_path_f_2 = 'path_to_f_2.tsv' # Replace with actual file path
