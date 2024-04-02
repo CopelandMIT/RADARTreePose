@@ -234,6 +234,8 @@ class RdmFullCapture(Dataset):
     def plot_predictions_with_time(self, index, smoothed_predictions, capture_name):
         """
         Plot smoothed predictions against the true labels and show time on the secondary x-axis.
+        Adjusted to label the y-axis by classes 0 being FU, 1 being FD, and 2 being NEITHER.
+        Labels and tick labels are made 2x larger.
         """
         labels = self.labels[index]
         metadata = self.all_metadata[index]
@@ -244,9 +246,15 @@ class RdmFullCapture(Dataset):
         ax1.plot(labels, label='True Labels', color='blue')
         ax1.plot(smoothed_predictions, label='Predicted', color='red', linestyle='--')
         ax1.set_xlim([metadata['frame_range'][0], metadata['frame_range'][1]])
-        ax1.set_xlabel('Frame')
-        ax1.set_ylabel('Label')
-        ax1.legend(loc='upper left')
+        ax1.set_xlabel('Frame', fontsize=34)  # 2x larger font size for X axis label
+        ax1.set_ylabel('Label', fontsize=34)  # 2x larger font size for Y axis label
+        ax1.set_yticks([0, 1, 2])
+        ax1.set_yticklabels(['FU', 'FD', 'NEITHER'], fontsize=30)  # 2x larger font size for Y tick labels
+        ax1.legend(loc='lower right', fontsize=24)  # Adjust legend font size if needed
+
+        # Increase tick label size
+        ax1.tick_params(axis='x', labelsize=14)  # Adjust X tick label size if needed
+        ax1.tick_params(axis='y', labelsize=24)  # Adjust Y tick label size if needed
 
         frames = np.arange(metadata['frame_range'][0], metadata['frame_range'][1] + 1)
         times = (metadata['MOCAP_time_range'][0] + frames * metadata['seconds_per_frame']) - metadata['frame_range'][0] + correction_offset
@@ -260,11 +268,41 @@ class RdmFullCapture(Dataset):
         ax2 = ax1.twiny()
         ax2.set_xlim(ax1.get_xlim())
         ax2.set_xticks(tick_frames)
-        ax2.set_xticklabels(["{:.2f}s".format(time) for time in tick_times], rotation=45)
-        ax2.set_xlabel('Time (s)')
+        ax2.set_xticklabels(["{:.2f}s".format(time) for time in tick_times], rotation=45, fontsize=14)  # Adjust secondary X tick label size if needed
+        ax2.set_xlabel('Time (s)', fontsize=20)  # 2x larger font size for secondary X axis label
 
-        plt.title(f'Predictions vs. True Labels for {capture_name}')
+        plt.title(f'Predictions vs. True Labels for {capture_name}', fontsize=24)  # 2x larger font size for the title
         plt.show()
+        
+    def plot_predictions_without_time(self, index, smoothed_predictions, capture_name):
+        """
+        Plot smoothed predictions against the true labels and show time on the secondary x-axis.
+        Adjusted to label the y-axis by classes 0 being FU, 1 being FD, and 2 being NEITHER.
+        Labels and tick labels are made 2x larger.
+        """
+        labels = self.labels[index]
+        metadata = self.all_metadata[index]
+        correction_offset = 0.3
+
+        fig, ax1 = plt.subplots(figsize=(20, 5))
+
+        ax1.plot(labels, label='True Labels', color='blue')
+        ax1.plot(smoothed_predictions, label='Predicted', color='red', linestyle='--')
+        ax1.set_xlim([metadata['frame_range'][0], metadata['frame_range'][1]])
+        ax1.set_xlabel('Frame', fontsize=34)  # 2x larger font size for X axis label
+        ax1.set_ylabel('Label', fontsize=34)  # 2x larger font size for Y axis label
+        ax1.set_yticks([0, 1, 2])
+        ax1.set_yticklabels(['FU', 'FD', 'NEITHER'], fontsize=30)  # 2x larger font size for Y tick labels
+        ax1.legend(loc='lower right', fontsize=24)  # Adjust legend font size if needed
+
+        # Increase tick label size
+        ax1.tick_params(axis='x', labelsize=24)  # Adjust X tick label size if needed
+        ax1.tick_params(axis='y', labelsize=24)  # Adjust Y tick label size if needed
+
+        plt.title(f'FU/FD Predictions for Capture: {capture_name}', fontsize=30)  # 2x larger font size for the title
+        plt.show()
+
+
         
     def find_consecutive_segments(self, predictions=[], min_length=5):
         if not isinstance(predictions,  np.ndarray):

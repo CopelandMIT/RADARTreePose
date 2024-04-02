@@ -36,7 +36,7 @@ class MOCAPDataCapture:
             vel_file_path (str): The file path to the velocity TSV file.
         """
         try:
-            # self.position_data = self.process_tsv(self.pos_file_path)
+            self.position_data = self.process_tsv(self.pos_file_path)
             self.velocity_data = self.process_tsv(self.vel_file_path)
             # print("Position and velocity data loaded and processed.")
             # print(self.position_data)
@@ -206,3 +206,45 @@ class MOCAPDataCapture:
             print(f"Start actuator time: {self.start_actuator_time}, End actuator time: {self.end_actuator_time}")
         else:
             print("No appropriate transitions found in the Actuator_vel_X data.")
+            
+            
+    def get_time_normalized_length(self, start_time, end_time, markers):
+        allowed_markers = ['Shoulder', 'Wrist', 'Chest', 'Belly']
+        time_normalized_lengths = {}
+
+        # Filter the position data for the given time range
+        filtered_data = self.position_data[(self.position_data['time'] >= start_time) & (self.position_data['time'] <= end_time)]
+
+        for marker in markers:
+            if marker not in allowed_markers:
+                print(f"Marker {marker} is not allowed.")
+                continue
+
+            sides = ['R', 'L'] if marker in ['Shoulder', 'Wrist'] else ['']
+            for side in sides:
+                marker_name = f"{marker}_{side}" if side else marker
+                pos_columns = [f"{marker_name}_pos_X", f"{marker_name}_pos_Y", f"{marker_name}_pos_Z"]
+
+                # Check if the necessary columns exist in the data
+                if not all(col in filtered_data.columns for col in pos_columns):
+                    print(f"Data for {marker_name} is incomplete or missing.")
+                    continue
+
+                # Calculate the distance traveled by the marker
+                distances = np.sqrt(np.sum(np.diff(filtered_data[pos_columns].values, axis=0)**2, axis=1))
+                total_distance = np.sum(distances)
+
+                # Calculate the time normalization factor 
+                time_normalization_factor = (end_time - start_time)
+
+                # Calculate the average speed (distance/time)
+                average_speed = total_distance / time_normalization_factor if time_normalization_factor > 0 else 0
+
+                # Store the results
+                if side:  # For R or L markers
+                    key = f"{marker}_{side}"
+                    time_normalized_lengths[key] = average_speed
+                else:  # For markers without side specification
+                    time_normalized_lengths[marker] = average_speed
+
+        return time_normalized_lengths

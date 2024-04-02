@@ -528,6 +528,14 @@ class FPDataCapture:
         speeds = np.sqrt(velocities_squared)
         avg_speed = np.mean(speeds)
         return avg_speed
+    
+    def sqrt_average_speed(self, df):
+        cop_points = df[['COP_X', 'COP_Y']].values
+        velocities = np.diff(cop_points, axis=0)
+        velocities_squared = np.sum(velocities ** 2, axis=1)
+        sqrt_speeds = np.sqrt(np.sqrt(velocities_squared))
+        avg_sqrt_speeds = np.mean(sqrt_speeds)
+        return avg_sqrt_speeds
 
     def maximum_distance_from_centroid(self, df):
         cop_points = df[['COP_X', 'COP_Y']].values
@@ -535,6 +543,18 @@ class FPDataCapture:
         distances = np.sqrt(np.sum((cop_points - centroid) ** 2, axis=1))
         max_distance = np.max(distances)
         return max_distance
+    
+    def standard_deviation_from_centroid(self, df):
+        # Extract the COP points
+        cop_points = df[['COP_X', 'COP_Y']].values
+        # Calculate the centroid of the COP points
+        centroid = np.mean(cop_points, axis=0)
+        # Calculate the distances of each point from the centroid
+        distances = np.sqrt(np.sum((cop_points - centroid) ** 2, axis=1))
+        # Calculate the standard deviation of the distances
+        std_deviation = np.std(distances)
+        return std_deviation
+        
 # Usage example:
 # file_path_f_1 = 'path_to_f_1.tsv' # Replace with actual file path
 # file_path_f_2 = 'path_to_f_2.tsv' # Replace with actual file path

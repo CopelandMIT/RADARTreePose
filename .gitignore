@@ -1,3 +1,10 @@
 data/
 envs/
 models/
+model_notebooks/
+models_crossvalidation/
+OneFoldCV_Models/
+OneFoldCV_Models_v2/
+OneFoldCV_Models_v3/
+OneFoldCV_Models_v4/
+OneFoldCV_models_vel2/

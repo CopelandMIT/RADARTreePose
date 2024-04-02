@@ -13,7 +13,7 @@ from FPDataCapture import FPDataCapture
 
 class StableRdmDataset(Dataset):
     def __init__(self, root_dir, event_csv, included_folders, label_type = "avg_speed"):
-        label_types = ['avg_velocity_squared', 'max_distance_from_centroid', "avg_speed"]
+        label_types = ['avg_velocity_squared', 'max_distance_from_centroid', "avg_speed", "sqrt_of_avg_speed"]
         if label_type not in label_types:
             raise ValueError(f"Invalid lavel type. Expected one of: {label_types}")
         
@@ -34,12 +34,14 @@ class StableRdmDataset(Dataset):
                 frame_end = row['frame_end'] if np.isnan(row['frame_break']) else row['frame_break']
                 t_stable = row['t_stable']
                 t_end = row['t_foot_down'] if np.isnan(row['t_break']) else row['t_break']
-                #TODO remove problematic captures! 
+
                 for i in range(self.num_channels):            
                     capture_and_tx = f"{radar_capture}_channel{i+1}_tx{row['tx']}"
                     radar_file_path = os.path.join(folder_path, capture_and_tx + '.npy')  # Assuming .npy format
                     if os.path.exists(radar_file_path):
+                        print(f"found capture tx: {radar_file_path}")
                         rdm_data = np.load(radar_file_path)
+                        print(f"The shape of the {radar_capture} is: {rdm_data.shape}")
 
                         self.data.append(rdm_data)
                         metadata = {
@@ -60,6 +62,8 @@ class StableRdmDataset(Dataset):
                             label = force_plate_capture.average_velocity_squared(filtered_force_plate_df)
                         elif label_type == 'avg_speed':
                             label = force_plate_capture.average_speed(filtered_force_plate_df)
+                        elif label_type == 'sqrt_of_avg_speed':
+                            label = force_plate_capture.sqrt_average_speed(filtered_force_plate_df)
                         elif label_type == 'max_distance_from_centroid':
                             label = force_plate_capture.maximum_distance_from_centroid(filtered_force_plate_df)
                         

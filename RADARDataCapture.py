@@ -232,9 +232,12 @@ class FMCWRADARDataCapture:
         Returns:
             np.ndarray: Array of processed AoA heatmaps for each channel.
         """
+        
+        
         n_channels, n_frames, n_bins, n_elements = dataCube.shape
         aoa_all_channels = []
-
+        
+        
         # Define a window function for the spatial dimension (assuming ULA)
         spatial_window = np.hanning(n_elements)
 
@@ -257,8 +260,11 @@ class FMCWRADARDataCapture:
                 aoa_spectrum_min = np.min(aoa_spectrum)
                 aoa_normalized = (aoa_spectrum - aoa_spectrum_min) / (aoa_spectrum_max - aoa_spectrum_min + 1e-3)
 
+                # Log scaling - apply log1p for numerical stability
+                aoa_normalized_log = np.log1p(aoa_normalized)
+
                 # Append to the list for the current channel
-                aoa_list.append(aoa_normalized)
+                aoa_list.append(aoa_normalized_log)
 
             # Append the result for the current channel
             aoa_all_channels.append(aoa_list)
@@ -704,7 +710,43 @@ class FMCWRADARDataCapture:
         
         return np.array(processed_data)
         
+    def sub_select_AoA_DATA(self, data):
+        """
+        Subselects a central box of 23 rows and 13 columns from the AoA data.
+
+        Parameters:
+        - data: A 4D numpy array representing the radar data.
+
+        Returns:
+        - A 4D numpy array with the central 23x13 segment extracted from each frame.
+        """
+        # Initialize an empty list to collect processed frames for the current transition
+        processed_data = []
         
+        num_channels, num_frames, height, width = data.shape
+        
+        # Calculate the central starting and ending indices for both dimensions
+        central_row_start = (height - 23) // 2
+        central_row_end = central_row_start + 23
+        central_col_start = (width - 13) // 2
+        central_col_end = central_col_start + 13
+        
+        # Extract and process relevant frames for the current transition
+        for channel_idx in range(num_channels):
+            processed_frames = []
+            for frame_idx in range(num_frames):
+                # No need to transpose in this case, as we're selecting based on actual dimensions
+                frame = data[channel_idx, frame_idx, :, :]
+                
+                # Extract the central 23x13 box
+                processed_frame = frame[central_row_start:central_row_end, central_col_start:central_col_end]
+                        
+                # Append the processed frame to the list
+                processed_frames.append(processed_frame)
+            processed_data.append(processed_frames)     
+        
+        return np.array(processed_data)
+            
     def process_and_save_FUFD_RADAR_data(self, data, start_end_frames, output_folder_path, file_name):
         
         start_frame, end_frame = start_end_frames
