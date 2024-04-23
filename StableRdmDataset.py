@@ -39,13 +39,15 @@ class StableRdmDataset(Dataset):
                     capture_and_tx = f"{radar_capture}_channel{i+1}_tx{row['tx']}"
                     radar_file_path = os.path.join(folder_path, capture_and_tx + '.npy')  # Assuming .npy format
                     if os.path.exists(radar_file_path):
-                        print(f"found capture tx: {radar_file_path}")
+                        # print(f"found capture tx: {radar_file_path}")
                         rdm_data = np.load(radar_file_path)
-                        print(f"The shape of the {radar_capture} is: {rdm_data.shape}")
+                        if i % 100 == 0:
+                            print(f"The shape of the {radar_capture}, tx {row['tx']} is: {rdm_data.shape}")
 
                         self.data.append(rdm_data)
                         metadata = {
                             'RADAR_capture': radar_capture,
+                            'participant_id': radar_capture[:2],
                             "tx": row['tx'],
                             'channel': i+1,
                             "n_frames": rdm_data.shape[0],
