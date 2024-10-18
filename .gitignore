@@ -1,5 +1,10 @@
+# Ignore data directories
 data/
+
+# Ignore environment folders
 envs/
+
+# Ignore models and model-related directories
 models/
 model_notebooks/
 models_crossvalidation/
