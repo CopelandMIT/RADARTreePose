@@ -1,17 +1,35 @@
-# Ignore data directories
-data/
+# Ignore data directories (actual data files)
+data/data_files/
 
-# Ignore environment folders
-envs/
+# Ignore model data and artifacts (final outputs and experiment records)
+models/model_data/
 
-# Ignore models and model-related directories
-models/
-model_notebooks/
-models_crossvalidation/
-OneFoldCV_Models/
-OneFoldCV_Models_v2/
-OneFoldCV_Models_v3/
-OneFoldCV_Models_v4/
-OneFoldCV_models_vel2/
-LOO_CV_models/
-LOO_CV_models_v2/
+# Ignore __pycache__ directories and compiled Python files
+**/__pycache__/
+*.py[cod]
+
+# Ignore Jupyter notebook checkpoints
+**/.ipynb_checkpoints/
+
+# Ignore virtual environment directories but not .yaml environment files
+envs/*
+!envs/*.yaml
+!envs/*.yml
+
+# Ignore DVC files for tracked data and model outputs
+.dvc/
+.dvcignore
+
+# Ignore log files and temporary files
+logs/
+*.log
+*.tmp
+*.temp
+
+# Ignore unnecessary system files (macOS, Windows)
+.DS_Store
+Thumbs.db
+
+# Ignore IDE-specific directories (optional)
+.vscode/
+.idea/
