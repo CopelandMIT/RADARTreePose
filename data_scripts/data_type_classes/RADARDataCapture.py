@@ -35,7 +35,7 @@ class FMCWRADARDataCapture:
         self.file_path = file_path
         self.output_path = self.file_path.replace("_Data", "_Data_NP")
         self.seconds_per_frame = 0.036352
-        normalized_actuator_pattern_in_radar_path = '/Users/danielcopeland/Library/Mobile Documents/com~apple~CloudDocs/MIT Masters/DRL/LABx/RADARTreePose/data/filter_patterns/normalized_actuator_pattern_in_radar.npy'
+        normalized_actuator_pattern_in_radar_path = '/Volumes/FourTBLaCie/RADARTreePose_Data/metadata/filter_patterns/normalized_actuator_pattern_in_radar.npy'
         self.normalized_actuator_pattern_in_radar = np.load(normalized_actuator_pattern_in_radar_path)
         self.central_frequency = None
         self.bandwidth = None

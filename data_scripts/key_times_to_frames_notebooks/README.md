@@ -1,7 +1,7 @@
-### README for `scripts/pipelines` Directory
+### README for `data_scripts/key_times_to_frames_notebooks` Directory
 
 #### Purpose
-The `pipelines` directory contains end-to-end pipelines that automate the processing of data to produce key timestamps and frames, which are essential for data loading and analysis. These pipelines streamline the workflow of generating important event markers, start and end times, and frame indexes for different movement events in the dataset.
+The `key_times_to_frames_scripts` directory contains pipelines that streamline the workflow of generating important event markers, start and end times, and frame indexes for different movement events in the dataset.
 
 #### Scope
 The scripts and notebooks in this directory provide a unified way to generate and save start/end times, frame indexes, and other key timestamps, enabling efficient data loading and facilitating model training that depends on these markers.

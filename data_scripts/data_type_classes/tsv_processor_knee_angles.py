@@ -3,14 +3,13 @@ import csv
 import numpy as np
 import pandas as pd
 
-
 class TSVProcessorKnee:
     def __init__(self, input_folder, participant_id, output_folder):
         self.input_folder = input_folder
         self.output_folder = os.path.join(os.path.dirname(input_folder), output_folder)
 
         # Import CSV file and store each column as a separate list of strings
-        with open('/Users/danielcopeland/Library/Mobile Documents/com~apple~CloudDocs/MIT Masters/DRL/LABx/RADARTreePose/data/metadata/pose_vectors.csv') as csvfile:
+        with open('/Volumes/FourTBLaCie/RADARTreePose_Data/metadata/pose_vectors.csv') as csvfile:
             reader = csv.reader(csvfile)
             header = next(reader)  # Get header row
             data = [list(row) for row in reader]
@@ -178,11 +177,42 @@ class TSVProcessorKnee:
             df.insert(1, 'time', [i * 0.01 for i in range(len(df))])
             df.insert(2,'participant_id', self.participant_id)
             
-            #Add pose ID to the data frame
-            df = self.add_pose_ID_column(df,file_path)
+
 
             # Reset index
             df.reset_index(drop=True, inplace=True)
+            
+            if int(self.participant_id) > 24:
+                print(f"New participant: Number {self.participant_id}, shifting over two spaces")
+                # Display the first few rows and column names before shifting
+                print("Before shifting:")
+                print(df.head())
+                print("\nColumn names before shifting:")
+                print(df.columns)
+
+                # Shift column names after the third column by two positions to the right
+                columns = list(df.columns)
+                columns = columns[:3] + [None, None] + columns[3:]
+                df.columns = columns[:len(df.columns)]
+
+                # Drop columns 4 and 5
+                df.drop(df.columns[[3, 4]], axis=1, inplace=True)
+
+                # Display the updated DataFrame and column names after shifting and deleting
+                print("\nAfter shifting and deleting columns 4 and 5:")
+                print(df.head())
+                print("\nColumn names after shifting:")
+                print(df.columns)
+                                              
+            
+            #Add pose ID to the data frame
+            df = self.add_pose_ID_column(df,file_path)
+    
+            # Display the updated DataFrame and column names after shifting and deleting
+            print("\nAfter adding pose ID:")
+            print(df.head())
+            print("\nColumn names after pose ID:")
+            print(df.columns)
             
             ### Calculate the 3d Angles
             df_angles = self.calculate_angles(df)

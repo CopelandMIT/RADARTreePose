@@ -81,7 +81,9 @@ class MOCAPDataCapture:
             
             # Create blank, correct shape pandas DataFrames from remainder of lists
             df = pd.DataFrame(remaining_rows_list)
-            # print('New data frame')
+            # print('New data frame, loading...')
+            # print(df.head())
+                   
             
             # Shift row 6 to the left and remove cell 6,1
             df.iloc[2, 0:-1] = df.iloc[0, 1:].values
@@ -106,13 +108,38 @@ class MOCAPDataCapture:
             
             # Reset index
             df.reset_index(drop=True, inplace=True)
+            
+
+            
+            if int(self.participant_id) > 24:
+                # print(f"New participant: Number {self.participant_id}, shifting over two spaces")
+                # # Display the first few rows and column names before shifting
+                # print("Before shifting:")
+                # print(df.head())
+                # print("\nColumn names before shifting:")
+                # print(df.columns)
+
+                # Shift column names after the third column by two positions to the right
+                columns = list(df.columns)
+                columns = columns[:3] + [None, None] + columns[3:]
+                df.columns = columns[:len(df.columns)]
+
+                # Drop columns 4 and 5
+                df.drop(df.columns[[3, 4]], axis=1, inplace=True)
+
+                # # Display the updated DataFrame and column names after shifting and deleting
+                # print("\nAfter shifting and deleting columns 4 and 5:")
+                # print(df.head())
+                # print("\nColumn names after shifting:")
+                # print(df.columns)
+                                                
                   
             if save_to_csv == True:      
                 if df.shape[0] != 4000:
                     print(df.shape)
                     raise Exception("DATA Frame is the wrong size!!")
                 else:
-                    self.output_folder = "/Users/danielcopeland/Library/Mobile Documents/com~apple~CloudDocs/MIT Masters/DRL/LABx/RADARTreePose/data/csvs"
+                    self.output_folder = "/Volumes/FourTBLaCie/RADARTreePose_Data/processed/mocap/all_initial_pos_vel"
                     output_file_path = os.path.join(
                         self.output_folder, os.path.splitext(os.path.basename(file_path))[0] + ".csv"
                     )
@@ -165,6 +192,9 @@ class MOCAPDataCapture:
         if self.velocity_data is None:
             print("Velocity data not loaded. Please load data before running this function.")
             return
+        else:
+            print("Velocity Data")
+            print(self.velocity_data.head())
 
         # Generate the template signal
         template = np.concatenate([np.full(102, 50), np.zeros(10), np.full(102, -50)])
